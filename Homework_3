@@ -1,0 +1,508 @@
+#### PREDECIR LAS VENTAS DE APPLE ####
+
+
+# Descargamos librerias necesarias para la práctica
+require(forecast)
+require(xts)
+require(ggplot2)
+library(ggfortify)
+
+# Leemos los datos de las ventas de apple
+ventas <- read.csv("/Users/Elisa/Desktop/DataScience/Prediccion/Homework_3/apple.csv", header = TRUE,sep = ";", dec = ".")
+ventas <- ventas[c(1:70),]
+# Hay muchos NAs por lo que voy a asumir que donde hay un NA quiere decir que no había ventas
+ventas[is.na(ventas)] <- 0
+ventas$total <- ventas$iPhone+ventas$iPad+ventas$iPod+ventas$Mac
+ventas$Time <- as.Date(ventas$Time, "%d-%m-%Y")
+
+# dataframes con cada fase.
+ventas_iphone <- ventas[,c(1,2,3)]
+ventas_ipad <- ventas[,c(1,2,4)]
+ventas_ipod <- ventas[,c(1,2,5)]
+ventas_mac <- ventas[,c(1,2,6)]
+ventas_total <- ventas[,c(1,2,7)]
+
+### IPHONE ###
+
+## ETS ##
+
+iphone_xts <- to.quarterly(xts(ventas_iphone$iPhone, order.by = ventas_iphone$Time,frequency=4))
+#Transform to zoo data (forecast package)
+iphone_zoo <- as.zoo(iphone_xts$`xts(ventas_iphone$iPhone, order.by = ventas_iphone$Time, frequency = 4).Open`)
+#Change name
+names(iphone_zoo)="sales iphone"
+
+##Plot Serie
+autoplot(iphone_zoo)+ggtitle("Ventas Trimestrales Iphone")+xlab("Trimestres")+ylab("Ventas")
+#Seasonal Plot
+ggfreqplot(as.ts(iphone_zoo),freq=4,nrow=1,facet.labeller=c("1T","2T","3T","4T"))+ggtitle("Ventas Trimestrales Iphone")
+
+#Select number of observation to compare forecast
+cOmit <- 4
+
+#Data Size
+nObs <- length(iphone_zoo)
+
+#sub_sample
+o_iphone <- window(iphone_zoo,start=index(iphone_zoo[1]),end=index(iphone_zoo[nObs-cOmit]))
+
+## Select automatic ETS
+ets_fit_iphone<-ets(o_iphone)
+#forecast model
+f_iphone <- forecast(ets_fit_iphone)
+#Results
+summary(f_iphone)
+
+#Plot
+plot(f_iphone)
+lines(window(iphone_zoo),type="o")
+
+#Actual and Forecast
+matrix(c(f_iphone$mean[1:cOmit],iphone_zoo[(nObs-cOmit+1):nObs]),ncol=2)
+
+######## Creo que me sobra ########
+
+## Select automatic ETS
+ets_fit2_iphone<-ets(o_iphone,damped=TRUE)
+#forecast model
+f_iphone2=forecast(ets_fit2_iphone)
+#Results
+summary(f_iphone2)
+
+#Plot
+plot(f_iphone2)
+lines(window(iphone_zoo),type="o")
+
+#Actual and Forecast
+matrix(c(f_iphone2$mean[1:cOmit],f_iphone$mean[1:cOmit],iphone_zoo[(nObs-cOmit+1):nObs]),ncol=3)
+#Plot all models
+plot (f_iphone2)
+lines(window(iphone_zoo),type="o")
+lines(f_iphone$mean,type="o",col="red")
+
+## ARIMA ##
+nuevo_iphone <- data.frame(value = as.vector(iphone_zoo),
+                           time = time(iphone_zoo))
+ggplot(nuevo_iphone)+
+  geom_point(aes(x=time,y=value))+
+  geom_line(aes(x=time,y=value))+
+  ylab("Ventas")+
+  ggtitle("Ventas Trimestrales Iphone")+xlab("Trimestres")
+
+# Out sample (real data to forecast performance)
+iphone_perf <- window(iphone_zoo,start=index(iphone_zoo[nObs-cOmit+1]),end=index(iphone_zoo[nObs]))
+
+# ARIMA MODEL
+fit_iphone <- auto.arima(o_iphone,lambda="auto")
+summary(fit_iphone)
+
+#residual analysis
+ggtsdisplay(fit_iphone$residuals)
+
+#box-Ljung Test
+Box.test(fit_iphone$residuals,lag=4, fitdf=3, type="Lj")
+Box.test(fit_iphone$residuals,lag=8, fitdf=3, type="Lj") # p-value más bajo
+Box.test(fit_iphone$residuals,lag=12, fitdf=3, type="Lj")
+
+fventas_iphone <- forecast(fit_iphone)
+
+ggplot(nuevo_iphone)+
+  geom_point(aes(x=time,y=value))+
+  geom_line(aes(x=time,y=value))+
+  geom_forecast(fventas_iphone,alpha=0.4)+
+  ggtitle("ARIMA: Predicción Iphone")
+
+f_iphone
+fventas_iphone
+
+### IPAD ###
+
+## ETS ##
+
+ipad_xts=to.quarterly(xts(ventas_ipad$iPad, order.by = ventas_ipad$Time,frequency=4))
+#Transform to zoo data (forecast package)
+ipad_zoo <- as.zoo(ipad_xts$`xts(ventas_ipad$iPad, order.by = ventas_ipad$Time, frequency = 4).Open`)
+#Change name
+names(ipad_zoo)="sales ipad"
+
+##Plot Serie
+autoplot(ipad_zoo)+
+  ggtitle("Ventas Trimestrales ipad")+
+  xlab("Trimestres")+ylab("Ventas")
+#Seasonal Plot
+ggfreqplot(as.ts(ipad_zoo),freq=4,nrow=1,facet.labeller=c("1T","2T","3T","4T"))+ggtitle("Ventas Trimestrales ipad")
+
+#Select number of observation to compare forecast
+cOmit <- 4
+
+#Data Size
+nObs <- length(ipad_zoo)
+
+#sub_sample
+o_ipad <- window(ipad_zoo,start=index(ipad_zoo[1]),end=index(ipad_zoo[nObs-cOmit]))
+
+## Select automatic ETS
+ets_fit_ipad<-ets(o_ipad)
+#forecast model
+f_ipad <- forecast(ets_fit_ipad)
+#Results
+summary(f_ipad)
+
+#Plot
+plot(f_ipad)
+lines(window(ipad_zoo),type="o")
+
+#Actual and Forecast
+matrix(c(f_ipad$mean[1:cOmit],ipad_zoo[(nObs-cOmit+1):nObs]),ncol=2)
+
+
+## Select automatic ETS
+ets_fit2_ipad<-ets(o_ipad,damped=TRUE)
+#forecast model
+f_ipad2=forecast(ets_fit2_ipad)
+#Results
+summary(f_ipad2)
+
+#Plot
+plot(f_ipad2)
+lines(window(ipad_zoo),type="o")
+
+#Actual and Forecast
+matrix(c(f_ipad2$mean[1:cOmit],f_ipad$mean[1:cOmit],ipad_zoo[(nObs-cOmit+1):nObs]),ncol=3)
+#Plot all models
+plot (f_ipad2)
+lines(window(ipad_zoo),type="o")
+lines(f_ipad$mean,type="o",col="red")
+
+## ARIMA ##
+nuevo_ipad <- data.frame(value = as.vector(ipad_zoo),
+                         time = time(ipad_zoo))
+ggplot(nuevo_ipad)+
+  geom_point(aes(x=time,y=value))+
+  geom_line(aes(x=time,y=value))+
+  ylab("Ventas")+
+  ggtitle("Ventas Trimestrales ipad")+xlab("Trimestres")
+
+
+# Out sample (real data to forecast performance)
+ipad_perf <- window(ipad_zoo,start=index(ipad_zoo[nObs-cOmit+1]),end=index(ipad_zoo[nObs]))
+
+# ARIMA MODEL
+fit_ipad <- auto.arima(o_ipad,lambda="auto")
+summary(fit_ipad)
+
+#residual analysis
+ggtsdisplay(fit_ipad$residuals)
+
+#box-Ljung Test
+Box.test(fit_ipad$residuals,lag=4, fitdf=3, type="Lj")
+Box.test(fit_ipad$residuals,lag=8, fitdf=3, type="Lj")
+Box.test(fit_ipad$residuals,lag=12, fitdf=3, type="Lj")
+
+fventas_ipad <- forecast(fit_ipad)
+
+ggplot(nuevo_ipad)+
+  geom_point(aes(x=time,y=value))+
+  geom_line(aes(x=time,y=value))+
+  geom_forecast(fventas_ipad,alpha=0.4)+
+  ggtitle("ARIMA: Predicción ipad")
+
+f_ipad
+fventas_ipad
+
+### IPOD ###
+
+## ETS ##
+
+ipod_xts <- to.quarterly(xts(ventas_ipod$iPod, order.by = ventas_ipod$Time,frequency=4))
+#Transform to zoo data (forecast package)
+ipod_zoo <- as.zoo(ipod_xts$`xts(ventas_ipod$iPod, order.by = ventas_ipod$Time, frequency = 4).Open`)
+#Change name
+names(ipod_zoo)="sales ipod"
+
+##Plot Serie
+autoplot(ipod_zoo)+
+  ggtitle("Ventas Trimestrales ipod")+
+  xlab("Trimestres")+ylab("Ventas")
+#Seasonal Plot
+ggfreqplot(as.ts(ipod_zoo),freq=4,nrow=1,facet.labeller=c("1T","2T","3T","4T"))+ggtitle("Ventas Trimestrales ipod")
+
+#Select number of observation to compare forecast
+cOmit <- 4
+
+#Data Size
+nObs <- length(ipod_zoo)
+
+#sub_sample
+o_ipod <- window(ipod_zoo,start=index(ipod_zoo[1]),end=index(ipod_zoo[nObs-cOmit]))
+
+
+## Select automatic ETS
+ets_fit_ipod<-ets(o_ipod)
+#forecast model
+f_ipod <- forecast(ets_fit_ipod)
+#Results
+summary(f_ipod)
+
+#Plot
+plot(f_ipod)
+lines(window(ipod_zoo),type="o")
+
+#Actual and Forecast
+matrix(c(f_ipod$mean[1:cOmit],ipod_zoo[(nObs-cOmit+1):nObs]),ncol=2)
+
+
+## Select automatic ETS
+ets_fit2_ipod<-ets(o_ipod,damped=TRUE)
+#forecast model
+f_ipod2=forecast(ets_fit2_ipod)
+#Results
+summary(f_ipod2)
+
+#Plot
+plot(f_ipod2)
+lines(window(ipod_zoo),type="o")
+
+#Actual and Forecast
+matrix(c(f_ipod2$mean[1:cOmit],f_ipod$mean[1:cOmit],ipod_zoo[(nObs-cOmit+1):nObs]),ncol=3)
+#Plot all models
+plot (f_ipod2)
+lines(window(ipod_zoo),type="o")
+lines(f_ipod$mean,type="o",col="red")
+
+## ARIMA ##
+nuevo_ipod <- data.frame(value = as.vector(ipod_zoo),
+                         time = time(ipod_zoo))
+ggplot(nuevo_ipod)+
+  geom_point(aes(x=time,y=value))+
+  geom_line(aes(x=time,y=value))+
+  ylab("Ventas")+
+  ggtitle("Ventas Trimestrales ipod")+xlab("Trimestres")
+
+# Log transformation?
+ipod_zoo_log <- log(ipod_zoo)
+nuevo_ipod_log <- data.frame(value = as.vector(ipod_zoo_log),
+                             time = time(ipod_zoo_log))
+
+ggplot(nuevo_ipod_log)+
+  geom_point(aes(x=time,y=value))+
+  geom_line(aes(x=time,y=value))+
+  ylab("Ventas")+
+  ggtitle("Ventas Trimestrales ipod")+xlab("Trimestres")
+
+# Out sample (real data to forecast performance)
+ipod_perf <- window(ipod_zoo,start=index(ipod_zoo[nObs-cOmit+1]),end=index(ipod_zoo[nObs]))
+
+# ARIMA MODEL
+fit_ipod <- auto.arima(o_ipod,lambda="auto")
+summary(fit_ipod)
+
+#residual analysis
+ggtsdisplay(fit_ipod$residuals)
+
+#box-Ljung Test
+Box.test(fit_ipod$residuals,lag=4, fitdf=3, type="Lj")
+Box.test(fit_ipod$residuals,lag=8, fitdf=3, type="Lj")
+Box.test(fit_ipod$residuals,lag=12, fitdf=3, type="Lj")
+
+fventas_ipod <- forecast(fit_ipod)
+
+ggplot(nuevo_ipod)+
+  geom_point(aes(x=time,y=value))+
+  geom_line(aes(x=time,y=value))+
+  geom_forecast(fventas_ipod,alpha=0.4)+
+  ggtitle("ARIMA: Predicción ipod")
+
+f_ipod
+fventas_ipod
+
+### MAC ###
+
+## ETS ##
+
+mac_xts <- to.quarterly(xts(ventas_mac$Mac, order.by = ventas_mac$Time,frequency=4))
+#Transform to zoo data (forecast package)
+mac_zoo <- as.zoo(mac_xts$`xts(ventas_mac$Mac, order.by = ventas_mac$Time, frequency = 4).Open`)
+#Change name
+names(mac_zoo)="sales mac"
+
+##Plot Serie
+autoplot(mac_zoo)+
+  ggtitle("Ventas Trimestrales Mac")+
+  xlab("Trimestres")+ylab("Ventas")
+#Seasonal Plot
+ggfreqplot(as.ts(mac_zoo),freq=4,nrow=1,facet.labeller=c("1T","2T","3T","4T"))+ggtitle("Ventas Trimestrales Mac")
+
+#Select number of observation to compare forecast
+cOmit <- 4
+
+#Data Size
+nObs <- length(mac_zoo)
+
+#sub_sample
+o_mac <- window(mac_zoo,start=index(mac_zoo[1]),end=index(mac_zoo[nObs-cOmit]))
+
+## Select automatic ETS
+ets_fit_mac<-ets(o_mac)
+#forecast model
+f_mac <- forecast(ets_fit_mac)
+#Results
+summary(f_mac)
+
+#Plot
+plot(f_mac)
+lines(window(mac_zoo),type="o")
+
+#Actual and Forecast
+matrix(c(f_mac$mean[1:cOmit],mac_zoo[(nObs-cOmit+1):nObs]),ncol=2)
+
+
+## Select automatic ETS
+ets_fit2_mac<-ets(o_mac,damped=TRUE)
+#forecast model
+f_mac2=forecast(ets_fit2_mac)
+#Results
+summary(f_mac2)
+
+#Plot
+plot(f_mac2)
+lines(window(mac_zoo),type="o")
+
+#Actual and Forecast
+matrix(c(f_mac2$mean[1:cOmit],f_mac$mean[1:cOmit],mac_zoo[(nObs-cOmit+1):nObs]),ncol=3)
+#Plot all models
+plot (f_mac2)
+lines(window(mac_zoo),type="o")
+lines(f_mac$mean,type="o",col="red")
+
+## ARIMA ##
+nuevo_mac <- data.frame(value = as.vector(mac_zoo),
+                        time = time(mac_zoo))
+ggplot(nuevo_mac)+
+  geom_point(aes(x=time,y=value))+
+  geom_line(aes(x=time,y=value))+
+  ylab("Ventas")+
+  ggtitle("Ventas Trimestrales mac")+xlab("Trimestres")
+
+# Out sample (real data to forecast performance)
+mac_perf <- window(mac_zoo,start=index(mac_zoo[nObs-cOmit+1]),end=index(mac_zoo[nObs]))
+
+# ARIMA MODEL
+fit_mac <- auto.arima(o_mac,lambda="auto")
+summary(fit_mac)
+
+#residual analysis
+ggtsdisplay(fit_mac$residuals)
+
+#box-Ljung Test
+Box.test(fit_mac$residuals,lag=4, fitdf=3, type="Lj") # menor p-value
+Box.test(fit_mac$residuals,lag=8, fitdf=3, type="Lj")
+Box.test(fit_mac$residuals,lag=12, fitdf=3, type="Lj")
+
+fventas_mac <- forecast(fit_mac)
+
+ggplot(nuevo_mac)+
+  geom_point(aes(x=time,y=value))+
+  geom_line(aes(x=time,y=value))+
+  geom_forecast(fventas_mac,alpha=0.4)+
+  ggtitle("ARIMA: Predicción mac")
+
+f_mac
+fventas_mac
+
+### AGREGADO ###
+
+## ETS ##
+
+total_xts <- to.quarterly(xts(ventas_total$total, order.by = ventas_total$Time,frequency=4))
+#Transform to zoo data (forecast package)
+total_zoo <- as.zoo(total_xts$`xts(ventas_total$total, order.by = ventas_total$Time, frequency = 4).Open`)
+#Change name
+names(total_zoo)="sales total"
+
+##Plot Serie
+autoplot(total_zoo)+
+  ggtitle("Ventas Trimestrales Total")+
+  xlab("Trimestres")+ylab("Ventas")
+#Seasonal Plot
+ggfreqplot(as.ts(total_zoo),freq=4,nrow=1,facet.labeller=c("1T","2T","3T","4T"))+ggtitle("Ventas Trimestrales Total")
+
+#Select number of observation to compare forecast
+cOmit <- 4
+
+#Data Size
+nObs <- length(total_zoo)
+
+#sub_sample
+o_total <- window(total_zoo,start=index(total_zoo[1]),end=index(total_zoo[nObs-cOmit]))
+
+## Select automatic ETS
+ets_fit_total<-ets(o_total)
+#forecast model
+f_total <- forecast(ets_fit_total)
+#Results
+summary(f_total)
+
+#Plot
+plot(f_total)
+lines(window(total_zoo),type="o")
+
+#Actual and Forecast
+matrix(c(f_total$mean[1:cOmit],total_zoo[(nObs-cOmit+1):nObs]),ncol=2)
+
+
+## Select automatic ETS
+ets_fit2_total<-ets(o_total,damped=TRUE)
+#forecast model
+f_total2=forecast(ets_fit2_total)
+#Results
+summary(f_total2)
+
+#Plot
+plot(f_total2)
+lines(window(total_zoo),type="o")
+
+#Actual and Forecast
+matrix(c(f_total2$mean[1:cOmit],f_total$mean[1:cOmit],total_zoo[(nObs-cOmit+1):nObs]),ncol=3)
+#Plot all models
+plot (f_total)
+lines(window(total_zoo),type="o")
+# lines(f_total$mean,type="o",col="red")
+
+## ARIMA ##
+nuevo_total <- data.frame(value = as.vector(total_zoo),
+                          time = time(total_zoo))
+ggplot(nuevo_total)+
+  geom_point(aes(x=time,y=value))+
+  geom_line(aes(x=time,y=value))+
+  ylab("Ventas")+
+  ggtitle("Ventas Trimestrales total")+xlab("Trimestres")
+
+# Out sample (real data to forecast performance)
+total_perf <- window(total_zoo,start=index(total_zoo[nObs-cOmit+1]),end=index(total_zoo[nObs]))
+
+# ARIMA MODEL
+fit_total <- auto.arima(o_total,lambda="auto")
+summary(fit_total)
+
+#residual analysis
+ggtsdisplay(fit_total$residuals)
+
+#box-Ljung Test
+Box.test(fit_total$residuals,lag=4, fitdf=3, type="Lj")
+Box.test(fit_total$residuals,lag=8, fitdf=3, type="Lj")
+Box.test(fit_total$residuals,lag=12, fitdf=3, type="Lj")
+
+fventas_total <- forecast(fit_total)
+
+ggplot(nuevo_total)+
+  geom_point(aes(x=time,y=value))+
+  geom_line(aes(x=time,y=value))+
+  geom_forecast(f_total,alpha=0.4)+
+  ggtitle("ARIMA: Predicción total")
+
+f_total
+fventas_total
+
+
+
