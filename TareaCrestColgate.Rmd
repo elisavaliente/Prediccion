@@ -1,0 +1,275 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+Lo primero de todo vamos a descargarnos las librerías necesarias para llevar a cabo el analisis y modelos. 
+
+```{r}
+library(tidyverse)
+library(TSA)
+library(forecast)
+library(readxl)
+library(xts)
+library(CausalImpact)
+```
+
+Vamos a echar un ojo a los datos para ver que distribución tienen y la existencia de NAs
+```{r}
+dataTotal <- read_excel("data.xlsx")
+str(data)
+dim(data)
+summary(data)
+head(data)
+```
+
+Vemos que los datos la primera y segunda columna hacen referencia a las serie temporal pero tenemos que ponerlo en un formato de secuencia temporal para poder trabajar con ello. Para cada una de las dos cuotas. 
+
+No existen NAs por lo que estupendo. 
+
+## CREST. 
+Primero creamos la secuencia de fechas desde 1958 hasta 1963 semanalmente para poder tener la secuencia temporal sobre la que tenemos que trabajar. 
+```{r}
+crest <- dataTotal$Crest
+
+fecha <- seq(as.Date('1958/01/08'), as.Date('1963/04/23'), by = 'week')
+
+CuotaCrest <- xts(crest, order.by = fecha)
+View(CuotaCrest)
+
+# Lo pasamos a semanal 
+CuotaCrest <- to.weekly(CuotaCrest)
+View(CuotaCrest)
+CuotaCrestZoo <- as.zoo(CuotaCrest$CuotaCrest.Close)
+
+names(CuotaCrestZoo) <- 'CuotaMercado'
+View(CuotaCrestZoo)
+```
+
+A continuación, vamos a crear dos subsets uno de train y otro de test para nuestro data set. 
+```{r}
+CrestTrain <- CuotaCrestZoo[1:260, ]
+CrestTest <- CuotaCrestZoo[261:276, ]
+```
+
+## COLGATE
+Vamos a realizar el mismo proceso con los datos de colgate. 
+```{r}
+colgate <- dataTotal$Colgate
+
+generateDate <- seq(as.Date('1958/01/08'), as.Date('1963/04/23'), by = 'week')
+
+CuotaColgate <- xts(colgate, order.by = generateDate)
+View(CuotaColgate)
+
+# Lo pasamos a semanal 
+CuotaColgate <- to.weekly(CuotaColgate)
+View(CuotaColgate )
+CuotaColgateZoo <- as.zoo(CuotaColgate$CuotaColgate.Close)
+
+names(CuotaColgateZoo) <- 'CuotaMercado'
+View(CuotaColgateZoo)
+```
+
+Como hemos hecho antes hacemos un train y un test de iguales dimensiones que el anterior 
+```{r}
+ColgateTrain <- CuotaColgateZoo[1:260, ]
+ColgateTest <- CuotaColgateZoo[261:276, ]
+```
+
+Una vez tenemos el data set bien para poder analizarlo y realizar los modelos vamos a realizar una gráfica para ver la tendencia y la distribución de la cuota de mercado de Crest y de Colgate durante los años mencionados
+```{r}
+# Plot Serie with an intercept that is the time Crest aproved by the ADA.
+intDate<-as.Date("1960-08-01") 
+
+# Crest graph
+autoplot(CrestTrain)+
+  ggtitle("Cuota Mercado de Crest Semanales")+
+  xlab("Semanas")+ylab("Cuota de mercado")+
+  geom_vline(aes(xintercept=as.Date(intDate), col="red"), show.legend = F)
+
+# Colgate graph
+autoplot(ColgateTrain)+
+  ggtitle("Cuota Colgate Mercado Semanales")+
+  xlab("Semanas")+ylab("Cuota de mercado")+
+  geom_vline(aes(xintercept=as.Date(intDate), col="red"), show.legend = F)
+```
+Hemos indicado con la línea roja el momento en el que la pasta dental Crest es aprobada por la ADA y podemos ver como efectivamente hay una subida en la cuota de mercado. Por el contrario en el gráfico de la cuota de mercado de Colgate vemos que hay un comportamiento completamante opuesto. La cuota de mercado cae drásticamente que la de Crest. Tambien podemos ver como crest tiene una tendencia más hacia el alza desde el principio y colgate tiene una cuota de mercado más establa incluso después de la caída. 
+
+Antes de proceder a realizar el modelo Arima vamos a ver como esta de "mal nuestra distribución"
+```{r}
+# Crest
+ggAcf(CrestTrain,main="") # terrible diferenciación
+
+# Colgate
+ggAcf(ColgateTrain,main="") # terrible diferencio
+```
+Vemos que no hay ruido blanco, esto no nos gusta vamos a llevar a cabo el modelo Arima a ver si mejora.
+
+## MODELO ARIMA
+```{r}
+## ARIMA Model with autoarima
+# Crest
+fit_crest <- auto.arima(CrestTrain,lambda="auto") #0,1,1 diferenciando una vez
+summary(fit_crest)
+
+fit_crest %>% forecast(h=16) %>% autoplot(include=80)
+
+# Colgate
+fit_colgate<- auto.arima(ColgateTrain,lambda="auto")
+summary(fit_colgate)
+
+fit_colgate %>% forecast(h=16) %>% autoplot(include=80)
+
+```
+
+Vamos a analizar los residuos de ambos modelos arima para ver si el modelo es correcto o no analizando el ruido blanco y el test de Ljung-Box. Con el código checkresiduals() podemos observar las gráficas de los residuos y el test de Ljung-Box.
+```{r}
+# Crest
+checkresiduals(fit_crest) 
+
+# Colgate
+checkresiduals(fit_colgate) 
+```
+Podemos observar varias cosas. En primer lugar las gráfica ACF tiene las línes dentro de los márgenes lo que quiere decir que hay ruido blanco y es buena señal. Otra cosa que nos indica esto es el histograma de la dcha, en el que podemos apreciar que los residuos (histograma) se parece bastante a una distribución normal (línea naranja). Por último, 
+tenemos el Ljung-Box test que en ambos casos posee valores de p-value altos por lo que nos dice que hay ruido blanco y el modelo es correcto.
+
+## OUTLIERS
+Podemos utilizar el paquete TSA para detectar outliers. Existen dos tipos los additive que afectan a la serie temporal y los innovatice que affectan al error. Asi que vamos a calcular ambos para cada uno de los casos.
+
+```{r}
+# Crest additive
+detectAO(fit_crest)
+#Crest innovative
+detectIO(fit_crest)
+```
+Como podemos observar en el resultado para la cuota de mercado de Crest no existe outliers innovativos pero si dos outliers en la fila 135 y la 136.
+
+Innovatice outliers
+```{r}
+# Colgate innovative
+detectIO(fit_colgate)
+# Colgate innovative
+detectAO(fit_colgate)
+
+```
+En la cuota de mercado de Colgate tenemos otro caso y es que no existen outliers. 
+
+```{r}
+# Vamos a ver a a que momento pertenecen estos outliers.  
+CrestTrain[135,]
+CrestTrain[136,]
+```
+Ambos corresponden a agosto de 1960, lo que tiene sentido ya que encajaría con la fecha en la que el Consejo de Terapéutica Dental de la American Dental Association (ADA) aprobó a Crest como una "ayuda importante en cualquier programa de higiene dental" (1 de agosto de 1960).
+```{r}
+library(tsoutliers)
+colgate_ts <- ts(dataTotal$Colgate, start = 1958, frequency = 52)
+colgate_prueba <- window(colgate_ts, start = 1958, end = c(1962,52))
+ColgateOut <- tso(colgate_prueba, types = c("AO", "LS", "TC"))
+```
+
+```{r}
+crest_ts <- ts(dataTotal$Crest, start = 1958, frequency = 52)
+crest_prueba <- window(crest_ts, start = 1958, end = c(1962,52))
+CrestOut <- tso(crest_prueba, types = c("AO", "LS", "TC"))
+```
+
+```{r}
+ColgateOut
+CrestOut
+```
+
+
+```{r}
+plot(ColgateOut)
+```
+```{r}
+plot(CrestOut)
+```
+
+
+A continuación tenemos que realizar otro autoarima para ver si ha mejorado el modelo estabilizando la serie temporal. 
+```{r}
+(fit_colgate_outlier <- auto.arima(ColgateOut$yadj, seasonal = TRUE, stepwise = FALSE, approximation = FALSE))
+(fit_crest_outlier <- auto.arima(CrestOut$yadj, seasonal = TRUE, stepwise = FALSE, approximation = FALSE))
+```
+```{r}
+fit_colgate_outlier
+fit_crest_outlier
+```
+
+```{r}
+checkresiduals(fit_colgate_outlier)
+checkresiduals(fit_crest_outlier)
+```
+
+
+```{r}
+fit_colgate_outlier %>% forecast(h = 16) %>% autoplot(include = 80)
+fit_crest_outlier %>% forecast(h = 16) %>% autoplot(include = 80)
+```
+Nos sale un modelo con un mejor modelo arima con un mejor AIC y BIC, por lo que el modelo es mejor. 
+
+Vamos a llevar acabo el causal impact. 
+
+## Causal Impact
+
+```{r}
+pre.period <- as.Date(c("1958-01-08", "1962-12-26"))
+post.period <- as.Date(c("1963-01-02 ", "1963-04-10"))
+
+# Crest
+impact <- CausalImpact(CuotaCrestZoo, pre.periodCrest, post.periodCrest)
+
+plot(impact)
+
+# Colgate 
+impact <- CausalImpact(CuotaColgateZoo, pre.periodCrest, post.periodCrest)
+
+plot(impact)
+```
+
+
+
+```{r}
+summary(impact, "report")
+```
+
+Vamos a llevar a cabo el modelo de intervención. Para ello tenemos que dividir la serie temporal en dos. El periodo pre-intervención y el post-intervención para Crest ya que para Colgate no hay outliers. 
+
+## MODELO DE INTERVENCIÓN
+
+Ver el efecto del ADA. 
+```{r}
+fitCrestOut <- arimax(CrestTrain, xreg = data.frame(Aug60 = 1*seq(CrestTrain) == 135, Aug60_2 = 1*seq(CrestTrain) == 136), order = c(0, 1, 1))
+
+checkresiduals(fitCrestOut)
+```
+
+## Modelo de intervención para los dos productos. 
+```{r}
+# Colgate 
+fit.intervencion.col <- arimax(ColgateTrain, xreg = data.frame(Aug60_2 = 1*seq(CrestTrain) == 136), order = c(1, 0, 1))
+
+checkresiduals(fit.intervencion.col)
+summary(fit.intervencion.col)
+```
+
+## FUNCIÓN DE TRANSFERENCIA
+meter como explicativo de colgate las cuotas de mercado de crest. Ver como afecta cres ta colgate. 
+```{r}
+mod.transf.crest <- arimax(x = ColgateTrain, order = c(1, 0, 1), 
+                                 xtransf = data.frame(CrestTrain),
+                                 transfer = list(c(0,0)),
+                                 method = "ML")
+mod.transf.crest
+```
+
+ar1 entre ar1 segundo y eso me tiene que dar más que dos, eso es que sea significativo.
+```{r}
+library(lmtest)
+coeftest(mod.transf.crest)
+```
+
+
+
